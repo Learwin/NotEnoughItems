@@ -3,7 +3,6 @@ package codechicken.nei;
 import static codechicken.lib.gui.GuiDraw.getMousePosition;
 import static codechicken.nei.NEIClientConfig.canCheatItem;
 
-import codechicken.nei.commands.CommandDumpTextures;
 import java.awt.Point;
 
 import net.minecraft.client.gui.inventory.GuiContainer;
@@ -23,6 +22,7 @@ import codechicken.nei.api.IInfiniteItemHandler;
 import codechicken.nei.api.INEIGuiHandler;
 import codechicken.nei.api.ItemInfo;
 import codechicken.nei.commands.CommandBookmarkAdd;
+import codechicken.nei.commands.CommandDumpTextures;
 import codechicken.nei.commands.CommandRecipeId;
 import codechicken.nei.commands.CommandUntranslator;
 import codechicken.nei.guihook.GuiContainerManager;

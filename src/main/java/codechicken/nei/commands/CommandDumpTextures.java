@@ -1,7 +1,5 @@
 package codechicken.nei.commands;
 
-import cpw.mods.fml.common.registry.GameData;
-import cpw.mods.fml.common.registry.GameRegistry;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.nio.ByteBuffer;
@@ -24,6 +22,7 @@ import org.lwjgl.opengl.GL11;
 
 import codechicken.core.CommonUtils;
 import codechicken.nei.ItemList;
+import cpw.mods.fml.common.registry.GameRegistry;
 
 public class CommandDumpTextures extends CommandBase {
 
