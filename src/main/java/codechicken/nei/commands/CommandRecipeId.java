@@ -9,6 +9,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.ParameterizedType;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
@@ -273,30 +274,39 @@ public class CommandRecipeId extends CommandBase {
                     if (handlerMapping.isPresent()) {
                         handlerFile = dumpFolder.resolve(handlerFileName);
                     }
-                    for (int index = 0, num = handler.numRecipes(); index < num; index++) {
-                        try {
-                            final Recipe recipe = Recipe.of(handler, index);
+                    try (BufferedWriter bufWriter = Files.newBufferedWriter(
+                            handlerFile,
+                            StandardCharsets.UTF_8,
+                            StandardOpenOption.CREATE,
+                            StandardOpenOption.APPEND)) {
 
-                            if (handlerMapping.isPresent()) {
-                                var recipeJson = HandlerMapping
-                                        .getMappedRecipesJson(handler, index, handlerMapping.get());
-                                writer.write(GSON.toJson(recipeJson));
-                                writer.newLine();
-                            } else if (!recipe.getIngredients().isEmpty() && !recipe.getResults().isEmpty()) {
-                                writer.write(NBTJson.toJson(recipe.getRecipeId().toJsonObject()));
-                                writer.newLine();
+                        for (int index = 0, num = handler.numRecipes(); index < num; index++) {
+                            try {
+                                final Recipe recipe = Recipe.of(handler, index);
+
+                                if (handlerMapping.isPresent()) {
+                                    var recipeJson = HandlerMapping
+                                            .getMappedRecipesJson(handler, index, handlerMapping.get());
+                                    bufWriter.write(GSON.toJson(recipeJson));
+                                    bufWriter.newLine();
+                                } else if (!recipe.getIngredients().isEmpty() && !recipe.getResults().isEmpty()) {
+                                    bufWriter.write(NBTJson.toJson(recipe.getRecipeId().toJsonObject()));
+                                    bufWriter.newLine();
+                                }
+                            } catch (Exception ex) {
+                                NEIClientConfig.logger.error(
+                                        "MAPPEDEXPORT Found Broken RecipeId {}:{}",
+                                        GuiRecipeTab.getHandlerInfo(handler).getHandlerName(),
+                                        stack);
                             }
-                        } catch (Exception ex) {
-                            NEIClientConfig.logger.error(
-                                    "MAPPEDEXPORT Found Broken RecipeId {}:{}",
-                                    GuiRecipeTab.getHandlerInfo(handler).getHandlerName(),
-                                    stack);
                         }
+                    } catch (Exception e) {
+                        NEIClientConfig.logger.error("MAPPEDEXPORT Error dumping RecipeId", e);
                     }
                 }
-                for (var type : HandlerMapping.missingTypes.keySet()) {
-                    NEIClientConfig.logger.error("MAPPEDEXPORT Can't get Json for fieldtype: {}", type);
-                }
+            }
+            for (var type : HandlerMapping.missingTypes.keySet()) {
+                NEIClientConfig.logger.error("MAPPEDEXPORT Can't get Json for fieldtype: {}", type);
             }
         }
 

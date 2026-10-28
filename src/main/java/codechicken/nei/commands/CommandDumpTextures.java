@@ -153,7 +153,7 @@ public class CommandDumpTextures extends CommandBase {
             for (var block : blocks) {
                 BufferedImage img = renderItemToImage(block, resolution);
                 var resLoc = GameRegistry.findUniqueIdentifierFor(block.getItem());
-                var fileName = resLoc.modId + "_" + resLoc.name + ".png";
+                var fileName = sanitizeFilename(resLoc.modId + "_" + resLoc.name + ".png");
                 File file = new File(dir, fileName);
                 ImageIO.write(img, "PNG", file);
                 if (i % 1000 == 0) {
@@ -164,6 +164,10 @@ public class CommandDumpTextures extends CommandBase {
         } catch (Exception e) {
             e.printStackTrace();
         }
+    }
+
+    public static String sanitizeFilename(String filename) {
+        return filename.replaceAll("[\\\\/:*?\"<>|]", "_");
     }
 
 }
