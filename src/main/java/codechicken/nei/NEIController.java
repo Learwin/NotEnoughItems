@@ -3,6 +3,7 @@ package codechicken.nei;
 import static codechicken.lib.gui.GuiDraw.getMousePosition;
 import static codechicken.nei.NEIClientConfig.canCheatItem;
 
+import codechicken.nei.commands.CommandDumpTextures;
 import java.awt.Point;
 
 import net.minecraft.client.gui.inventory.GuiContainer;
@@ -72,6 +73,7 @@ public class NEIController implements IContainerSlotClickHandler, IContainerInpu
         ClientCommandHandler.instance.registerCommand(new CommandBookmarkAdd());
         ClientCommandHandler.instance.registerCommand(new CommandRecipeId());
         ClientCommandHandler.instance.registerCommand(new CommandUntranslator());
+        ClientCommandHandler.instance.registerCommand(new CommandDumpTextures());
     }
 
     public static void updateUnlimitedItems(InventoryPlayer inventory) {
