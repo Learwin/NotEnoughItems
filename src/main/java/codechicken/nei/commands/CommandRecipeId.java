@@ -5,6 +5,8 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.IOException;
+import java.lang.reflect.Field;
+import java.lang.reflect.ParameterizedType;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.ArrayList;
@@ -12,6 +14,8 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
@@ -29,10 +33,15 @@ import net.minecraft.util.EnumChatFormatting;
 
 import org.apache.commons.io.IOUtils;
 
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
 import codechicken.core.CommonUtils;
 import codechicken.nei.ClientHandler;
+import codechicken.nei.HandlerMapping;
 import codechicken.nei.ItemList;
 import codechicken.nei.NEIClientConfig;
 import codechicken.nei.NEIClientUtils;
@@ -45,6 +54,9 @@ import codechicken.nei.recipe.TemplateRecipeHandler;
 import codechicken.nei.util.NBTJson;
 
 public class CommandRecipeId extends CommandBase {
+
+    public static final Gson GSON = new GsonBuilder().disableHtmlEscaping().create();
+    public static final Gson PRETTY_GSON = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
 
     protected static class ProcessDiffThread extends Thread {
 
@@ -151,6 +163,68 @@ public class CommandRecipeId extends CommandBase {
             });
         }
 
+        private HandlerMapping loadMapping(File handlerFile) {
+            try (var reader = new FileReader(handlerFile)) {
+                var gson = new GsonBuilder().create();
+
+                return gson.fromJson(reader, HandlerMapping.class);
+            } catch (IOException e) {
+                NEIClientConfig.logger
+                        .error("Unable to load mapping json for " + handlerFile.getClass().getSimpleName(), e);
+            }
+            return null;
+        }
+
+        private Optional<HandlerMapping> tryLoadHandlerMapping(ICraftingHandler handler) {
+
+            var handlerClass = handler.getClass();
+            var simpleClassName = handlerClass.getSimpleName();
+            var dir = new File(CommonUtils.getMinecraftDir(), "recipeid/handlerformat");
+            if (!dir.exists()) dir.mkdirs();
+            var handlerFile = new File(
+                    CommonUtils.getMinecraftDir(),
+                    "recipeid/handlerformat/" + simpleClassName + ".json");
+
+            if (!handlerFile.exists()) {
+                try (BufferedWriter writer = Files.newBufferedWriter(handlerFile.toPath(), StandardCharsets.UTF_8)) {
+                    Field recipeField = handlerClass.getField("arecipes");
+                    if (recipeField.get(handler) instanceof List arecipe) {
+                        if (arecipe.isEmpty()) {
+                            throw new NoSuchElementException("Empty arecipe for " + simpleClassName);
+                        }
+
+                        var a = arecipe.get(0);
+                        var recipeFields = a.getClass().getDeclaredFields();
+
+                        var json = new JsonObject();
+                        var formats = new JsonArray();
+                        for (Field field : recipeFields) {
+                            if (field.isSynthetic()) {
+                                continue;
+                            }
+                            var type = field.getGenericType();
+                            var typeName = field.getType().getName();
+                            if (type instanceof ParameterizedType) {
+                                typeName = type.getTypeName();
+                            }
+                            var format = new JsonObject();
+                            format.addProperty("field", field.getName());
+                            format.addProperty("type", typeName);
+                            formats.add(format);
+                        }
+                        json.add("format", formats);
+
+                        writer.write(PRETTY_GSON.toJson(json));
+                        writer.newLine();
+                    }
+
+                } catch (Exception e) {
+                    NEIClientConfig.logger.error("Error creating unmapped handler for " + simpleClassName, e);
+                }
+            }
+            return Optional.ofNullable(loadMapping(handlerFile));
+        }
+
         @Override
         public void run() {
             NEIClientConfig.logger.info("Start processing recipe handlers!");
@@ -191,7 +265,37 @@ public class CommandRecipeId extends CommandBase {
                 count++;
 
                 for (ICraftingHandler handler : getCraftingHandlers(stack)) {
-                    writeLines(writer, collectRecipeLines(handler, stack.toString()));
+                    // for (ICraftingHandler handler : GuiCraftingRecipe.craftinghandlers) {
+                    var handlerFileName = handler.getClass().getSimpleName() + "_recipes.json";
+                    var handlerMapping = tryLoadHandlerMapping(handler);
+                    var dumpFolder = currFile.toPath().getParent();
+                    var handlerFile = currFile.toPath();
+                    if (handlerMapping.isPresent()) {
+                        handlerFile = dumpFolder.resolve(handlerFileName);
+                    }
+                    for (int index = 0, num = handler.numRecipes(); index < num; index++) {
+                        try {
+                            final Recipe recipe = Recipe.of(handler, index);
+
+                            if (handlerMapping.isPresent()) {
+                                var recipeJson = HandlerMapping
+                                        .getMappedRecipesJson(handler, index, handlerMapping.get());
+                                writer.write(GSON.toJson(recipeJson));
+                                writer.newLine();
+                            } else if (!recipe.getIngredients().isEmpty() && !recipe.getResults().isEmpty()) {
+                                writer.write(NBTJson.toJson(recipe.getRecipeId().toJsonObject()));
+                                writer.newLine();
+                            }
+                        } catch (Exception ex) {
+                            NEIClientConfig.logger.error(
+                                    "MAPPEDEXPORT Found Broken RecipeId {}:{}",
+                                    GuiRecipeTab.getHandlerInfo(handler).getHandlerName(),
+                                    stack);
+                        }
+                    }
+                }
+                for (var type : HandlerMapping.missingTypes.keySet()) {
+                    NEIClientConfig.logger.error("MAPPEDEXPORT Can't get Json for fieldtype: {}", type);
                 }
             }
         }
@@ -357,7 +461,7 @@ public class CommandRecipeId extends CommandBase {
             return;
         }
 
-        (new ProcessDiffThread(sender, prevFilename, currFilename, diffFilename)).start();
+        (new CommandRecipeId.ProcessDiffThread(sender, prevFilename, currFilename, diffFilename)).start();
     }
 
     protected void processDumpCommand(ICommandSender sender, String[] args, boolean fastDump) {
@@ -371,7 +475,7 @@ public class CommandRecipeId extends CommandBase {
         final String currFilename = args.length == 2 ? args[1] : "recipeId";
         if (!dir.exists()) dir.mkdirs();
 
-        (new ProcessDumpThread(sender, getFile(currFilename), fastDump)).start();
+        (new CommandRecipeId.ProcessDumpThread(sender, getFile(currFilename), fastDump)).start();
     }
 
     private static File getFile(String filename) {
